@@ -7,20 +7,39 @@ PATCH_FILES = Path(__file__).parent / 'patches'
 assert PATCH_FILES.exists()
 PATCHES = sorted(PATCH_FILES.glob("*.patch"))
 CONTENTS = {p: p.read_text().splitlines(keepends=True) for p in PATCHES}
+ADD, BIG, EDIT, LITTLE, MV, REMOVE = CONTENTS.values()
+CHUNK_SIZES = {"big": [13, 32], "mv": [1]}
 
 
 class SplitPatchTest(TestCase):
-    def test_chunking(self):
-        for p, lines in CONTENTS.items():
-            with self.subTest(path=p):
-                chunks = sp._chunk(lines)
-                if p.stem == "big":
-                    first, second = chunks
-                    self.assertEqual(len(first), 13)
-                    self.assertEqual(len(second), 32)
-                elif p.stem == 'mv':
-                    chunk, = chunks
-                    self.assertEqual(len(chunk), 1)
-                else:
-                    chunk, = chunks
-                    self.assertEqual(len(chunk), 2)
+    def test_add(self):
+        deltas, = sp.FileDeltas.read(ADD, 0, 0)
+        delta, = deltas
+        self.assertEqual(len(delta.deltas), 1)
+        self.assertEqual(
+            delta.deltas[0],
+            ['@@ -0,0 +1,3 @@\n', '+three\n', '+four\n', '+five\n']
+        )
+        self.assertFalse(delta.is_splittable)
+
+    def test_mv(self):
+        deltas, = sp.FileDeltas.read(MV, 0, 0)
+        delta, = deltas
+        self.assertEqual(len(delta.deltas), 0)
+        self.assertFalse(delta.is_splittable)
+
+    def test_remove(self):
+        deltas, = sp.FileDeltas.read(REMOVE, 0, 0)
+        delta, = deltas
+        self.assertEqual(len(delta.deltas), 1)
+        self.assertFalse(delta.is_splittable)
+
+    def test_edit(self):
+        deltas, = sp.FileDeltas.read(EDIT, 0, 0)
+        delta, = deltas
+        self.assertEqual(len(delta.deltas), 1)
+        self.assertTrue(delta.is_splittable)
+
+    def test_big(self):
+        deltas = sp.FileDeltas.read(BIG, 0, 0)
+        self.assertEqual([len(d) for d in deltas], [3, 6])
